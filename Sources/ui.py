@@ -133,8 +133,6 @@ class MainWindow(QMainWindow):
         self.label.set_metadata(f"Left:{left}|Right:{right}")
         self.label.show_metadata = self.current_metadata["tooltip_enabled"]
         self.update()
-        print(self.current_metadata)
-
 
     def resizeEvent(self, event):
         if self.label.pixmap():
