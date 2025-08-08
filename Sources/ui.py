@@ -5,11 +5,12 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QFileDialog, QSizePolicy
 )
 from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtGui import QPixmap, QImage, QAction
+from PySide6.QtGui import QPixmap, QImage, QAction, QResizeEvent, QPainter
 
 from Sources.decoder import VideoDecoder
 from Sources.mixer import MixingThread
 from Sources.utils import ImageLoader
+from Sources.VideoLabel import VideoLabel
 
 
 class MainWindow(QMainWindow):
@@ -21,11 +22,16 @@ class MainWindow(QMainWindow):
         self.q1 = Queue()
         self.q2 = Queue()
 
-        self.label = QLabel("🔲 Mixed Output")
+        self.label = VideoLabel("🔲 Mixed Output")
         self.label.setStyleSheet("background-color: black; color: white;")
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
+        self.current_metadata = {
+            "left": {"width": None, "height": None},
+            "right": {"width" : None, "height" : None},
+            "tooltip_enabled" : False
+            }        
         self.setCentralWidget(self.label)
 
         self.path1 = ""
@@ -94,6 +100,7 @@ class MainWindow(QMainWindow):
         # mixer 시작
         self.mixer = MixingThread(self.q1, self.q2)
         self.mixer.mixed_frame_ready.connect(self.update_display)
+        self.mixer.metadata_signal.connect(self.update_metadata)
         self.mixer.start()
 
 
@@ -114,6 +121,31 @@ class MainWindow(QMainWindow):
         )
         self.label.setPixmap(pix)
 
+    def update_metadata(self, sizes):
+        w1, h1, w2, h2 = sizes
+        self.current_metadata['left']['width'] = w1
+        self.current_metadata['left']['height'] = h1
+        self.current_metadata['right']['width'] = w2
+        self.current_metadata['right']['height'] = h2
+        
+        left = f"{self.current_metadata['left']['width']}x{self.current_metadata['left']['height']}"
+        right = f"{self.current_metadata['right']['width']}x{self.current_metadata['right']['height']}"
+        self.label.set_metadata(f"Left:{left}|Right:{right}")
+        self.label.show_metadata = self.current_metadata["tooltip_enabled"]
+        self.update()
+        print(self.current_metadata)
+
+
+    def resizeEvent(self, event):
+        if self.label.pixmap():
+            self.update_display(self.label.pixmap().toImage())
+        return super().resizeEvent(event)
+
+    def moveEvent(self, event):
+        if self.label.pixmap():
+            self.update_display(self.label.pixmap().toImage())
+        return super().moveEvent(event)
+
     def closeEvent(self, event):
         self.stop_all()
         event.accept()
@@ -131,8 +163,14 @@ class MainWindow(QMainWindow):
         elif key == Qt.Key.Key_Escape:
             if self.isFullScreen():
                 self.showNormal()
+                self.menuBar().show()
             else:
                 self.showFullScreen()
+                self.menuBar().hide()
+        elif key == Qt.Key.Key_Tab:
+            self.current_metadata["tooltip_enabled"] = not self.current_metadata["tooltip_enabled"]
+            self.label.show_metadata = self.current_metadata["tooltip_enabled"]
+            self.label.update()
                 
     @staticmethod
     def clear_queue(q):
