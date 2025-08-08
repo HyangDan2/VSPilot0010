@@ -1,6 +1,6 @@
 import time
 import numpy as np
-from queue import Queue
+from queue import Queue, Full
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QPushButton, QLabel, QVBoxLayout, QHBoxLayout, QFileDialog, QSizePolicy
 )
@@ -19,8 +19,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Column Video Mixer: Odd/Even Columns")
         self.resize(1280, 720)
 
-        self.q1 = Queue()
-        self.q2 = Queue()
+        self.q1 = Queue(maxsize=10)
+        self.q2 = Queue(maxsize=10)
 
         self.label = VideoLabel("🔲 Mixed Output")
         self.label.setStyleSheet("background-color: black; color: white;")
@@ -86,7 +86,7 @@ class MainWindow(QMainWindow):
             self.decoder1 = VideoDecoder(self.path1)
         else:
             self.decoder1 = ImageFeeder(self.path1)
-        self.decoder1.frame_ready.connect(lambda f: self.q1.put(f))
+        self.decoder1.frame_ready.connect(lambda f: self.put_safe(self.q1, f))
         self.decoder1.start()
 
         # decoder2 생성
@@ -94,15 +94,14 @@ class MainWindow(QMainWindow):
             self.decoder2 = VideoDecoder(self.path2)
         else:
             self.decoder2 = ImageFeeder(self.path2)
-        self.decoder2.frame_ready.connect(lambda f: self.q2.put(f))
+        self.decoder2.frame_ready.connect(lambda f: self.put_safe(self.q2, f))
         self.decoder2.start()
 
         # mixer 시작
         self.mixer = MixingThread(self.q1, self.q2)
         self.mixer.mixed_frame_ready.connect(self.update_display)
-        self.mixer.metadata_signal.connect(self.update_metadata)
+        self.mixer.metadata_updated.connect(self.update_metadata)
         self.mixer.start()
-
 
     def stop_all(self):
         if self.decoder1:
@@ -154,9 +153,9 @@ class MainWindow(QMainWindow):
             self.load_source1()
         elif key == Qt.Key.Key_2:
             self.load_source2()
-        elif key == Qt.Key.Key_3:
+        elif key == Qt.Key.Key_Space:
             self.start_mixing()
-        elif key == Qt.Key.Key_4:
+        elif key == Qt.Key.Key_P:
             self.stop_all()
         elif key == Qt.Key.Key_Escape:
             if self.isFullScreen():
@@ -169,6 +168,18 @@ class MainWindow(QMainWindow):
             self.current_metadata["tooltip_enabled"] = not self.current_metadata["tooltip_enabled"]
             self.label.show_metadata = self.current_metadata["tooltip_enabled"]
             self.label.update()
+        elif key == Qt.Key.Key_S:
+            temp_path1 = self.path1
+            temp_path2 = self.path2
+            self.path1 = temp_path2
+            self.path2 = temp_path1
+            self.start_mixing()
+                
+    def put_safe(self, q, f):
+        try:
+            q.put_nowait(f)
+        except Full:
+            pass
                 
     @staticmethod
     def clear_queue(q):

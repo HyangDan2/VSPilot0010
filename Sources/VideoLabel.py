@@ -16,7 +16,7 @@ class VideoLabel(QLabel):
 
         if self.show_metadata and self.metadata_text:
             painter = QPainter(self)
-            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             painter.setPen(QColor(255,255,255))
             painter.setFont(QFont("Arial", 14, QFont.Weight.Bold))
             painter.drawText(10, 25, self.metadata_text)

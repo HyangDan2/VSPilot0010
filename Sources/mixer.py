@@ -6,6 +6,7 @@ from queue import Empty
 
 class MixingThread(QThread):
     mixed_frame_ready = Signal(QImage)
+    metadata_updated = Signal(tuple)
 
     def __init__(self, queue1, queue2):
         super().__init__()
@@ -27,6 +28,11 @@ class MixingThread(QThread):
                 h, w, ch = mixed.shape
                 rgb = cv2.cvtColor(mixed, cv2.COLOR_BGR2RGB)
                 qimg = QImage(rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
+                w1 = f1.shape[1]
+                w2 = f2.shape[1]
+                h1 = f1.shape[0]
+                h2 = f2.shape[0]
+                self.metadata_updated.emit((w1, h1, w2, h2))
                 self.mixed_frame_ready.emit(qimg)
 
             except Empty:
