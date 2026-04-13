@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QSizePolicy, QFrame, QSlider, QComboBox, QSpinBox
 )
 from PySide6.QtCore import Qt, QThread, Signal, QEvent
-from PySide6.QtGui import QPixmap, QImage, QAction, QResizeEvent, QPainter
+from PySide6.QtGui import QPixmap, QImage, QAction, QActionGroup, QResizeEvent, QPainter
 
 from Sources.decoder import VideoDecoder
 from Sources.mixer import MixingThread
@@ -19,18 +19,21 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Column Video Mixer: Odd/Even Columns")
         self.resize(1280, 720)
+        self.setMouseTracking(True)
 
         self.q1 = Queue(maxsize=10)
         self.q2 = Queue(maxsize=10)
 
         self.container = QWidget()
         self.container.setMouseTracking(True)
+        self.container.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
 
         self.label = VideoLabel("🔲 Mixed Output")
         self.label.setStyleSheet("background-color: black; color: white;")
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.label.setMouseTracking(True)
+        self.label.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
 
         layout = QVBoxLayout(self.container)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -58,6 +61,7 @@ class MainWindow(QMainWindow):
         self.init_control_overlay()
         self.container.installEventFilter(self)
         self.label.installEventFilter(self)
+        self.installEventFilter(self)
 
     def init_menu(self):
         menubar = self.menuBar()
@@ -80,10 +84,31 @@ class MainWindow(QMainWindow):
         play_menu.addAction(start_action)
         play_menu.addAction(stop_action)
 
+        # Mixing 메뉴
+        mixing_menu = menubar.addMenu("Mixing")
+        self.mixing_action_group = QActionGroup(self)
+        self.mixing_action_group.setExclusive(True)
+
+        self.columns_action = QAction("Odd/Even Columns", self)
+        self.columns_action.setCheckable(True)
+        self.columns_action.setChecked(True)
+        self.columns_action.setData("columns")
+
+        self.checker_action = QAction("Checker-board", self)
+        self.checker_action.setCheckable(True)
+        self.checker_action.setData("checker")
+
+        self.mixing_action_group.addAction(self.columns_action)
+        self.mixing_action_group.addAction(self.checker_action)
+        mixing_menu.addAction(self.columns_action)
+        mixing_menu.addAction(self.checker_action)
+        self.mixing_action_group.triggered.connect(self.change_mixing_mode_from_action)
+
     def init_control_overlay(self):
         self.overlay = QFrame(self.container)
         self.overlay.setObjectName("videoControlOverlay")
         self.overlay.setMouseTracking(True)
+        self.overlay.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self.overlay.setStyleSheet("""
             QFrame#videoControlOverlay {
                 background-color: rgba(18, 18, 18, 220);
@@ -161,7 +186,7 @@ class MainWindow(QMainWindow):
         self.mode_combo = QComboBox()
         self.mode_combo.addItem("Odd/Even Columns", "columns")
         self.mode_combo.addItem("Checker-board", "checker")
-        self.mode_combo.currentIndexChanged.connect(self.change_mixing_mode)
+        self.mode_combo.currentIndexChanged.connect(self.change_mixing_mode_from_combo)
         mode_row.addWidget(self.mode_combo)
         mode_row.addWidget(QLabel("Checker pixels"))
         self.checker_spin = QSpinBox()
@@ -263,10 +288,28 @@ class MainWindow(QMainWindow):
             slider.setRange(0, 0)
         self.progress_labels[index].setText(f"{current} / {total}")
 
-    def change_mixing_mode(self):
+    def change_mixing_mode_from_combo(self):
         self.mixing_mode = self.mode_combo.currentData()
+        self.sync_mixing_actions()
         if self.mixer:
             self.mixer.set_mode(self.mixing_mode)
+
+    def change_mixing_mode_from_action(self, action):
+        self.mixing_mode = action.data()
+        self.sync_mixing_combo()
+        if self.mixer:
+            self.mixer.set_mode(self.mixing_mode)
+
+    def sync_mixing_actions(self):
+        self.columns_action.setChecked(self.mixing_mode == "columns")
+        self.checker_action.setChecked(self.mixing_mode == "checker")
+
+    def sync_mixing_combo(self):
+        index = self.mode_combo.findData(self.mixing_mode)
+        if index >= 0 and self.mode_combo.currentIndex() != index:
+            self.mode_combo.blockSignals(True)
+            self.mode_combo.setCurrentIndex(index)
+            self.mode_combo.blockSignals(False)
 
     def change_checker_size(self, value):
         self.checker_size = value
@@ -304,21 +347,30 @@ class MainWindow(QMainWindow):
         return super().moveEvent(event)
 
     def eventFilter(self, obj, event):
-        if event.type() == QEvent.Type.MouseMove:
+        if event.type() in (QEvent.Type.MouseMove, QEvent.Type.HoverMove):
             point = event.position().toPoint()
             if obj is self.label:
                 point = self.label.mapTo(self.container, point)
             elif obj is self.overlay:
                 point = self.overlay.mapTo(self.container, point)
-            if point.y() >= int(self.container.height() * 0.8):
-                self.position_overlay()
-                self.overlay.show()
-                self.overlay.raise_()
-            elif not self.overlay.geometry().contains(point):
-                self.overlay.hide()
+            elif obj is self:
+                point = self.container.mapFrom(self, point)
+            self.update_overlay_visibility(point)
         elif event.type() == QEvent.Type.Leave and obj is self.container:
             self.overlay.hide()
         return super().eventFilter(obj, event)
+
+    def mouseMoveEvent(self, event):
+        self.update_overlay_visibility(self.container.mapFrom(self, event.position().toPoint()))
+        return super().mouseMoveEvent(event)
+
+    def update_overlay_visibility(self, point):
+        if point.y() >= int(self.container.height() * 0.8):
+            self.position_overlay()
+            self.overlay.show()
+            self.overlay.raise_()
+        elif not self.overlay.geometry().contains(point):
+            self.overlay.hide()
 
     def position_overlay(self):
         if not hasattr(self, "overlay"):
