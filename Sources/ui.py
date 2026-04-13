@@ -98,10 +98,16 @@ class MainWindow(QMainWindow):
         self.checker_action.setCheckable(True)
         self.checker_action.setData("checker")
 
+        self.zigzag_action = QAction("Zig-zag", self)
+        self.zigzag_action.setCheckable(True)
+        self.zigzag_action.setData("zigzag")
+
         self.mixing_action_group.addAction(self.columns_action)
         self.mixing_action_group.addAction(self.checker_action)
+        self.mixing_action_group.addAction(self.zigzag_action)
         mixing_menu.addAction(self.columns_action)
         mixing_menu.addAction(self.checker_action)
+        mixing_menu.addAction(self.zigzag_action)
         self.mixing_action_group.triggered.connect(self.change_mixing_mode_from_action)
 
     def init_control_overlay(self):
@@ -186,6 +192,7 @@ class MainWindow(QMainWindow):
         self.mode_combo = QComboBox()
         self.mode_combo.addItem("Odd/Even Columns", "columns")
         self.mode_combo.addItem("Checker-board", "checker")
+        self.mode_combo.addItem("Zig-zag", "zigzag")
         self.mode_combo.currentIndexChanged.connect(self.change_mixing_mode_from_combo)
         mode_row.addWidget(self.mode_combo)
         mode_row.addWidget(QLabel("Checker pixels"))
@@ -303,6 +310,7 @@ class MainWindow(QMainWindow):
     def sync_mixing_actions(self):
         self.columns_action.setChecked(self.mixing_mode == "columns")
         self.checker_action.setChecked(self.mixing_mode == "checker")
+        self.zigzag_action.setChecked(self.mixing_mode == "zigzag")
 
     def sync_mixing_combo(self):
         index = self.mode_combo.findData(self.mixing_mode)

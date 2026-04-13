@@ -69,6 +69,8 @@ class MixingThread(QThread):
         self.checker_size = max(1, int(size))
 
     def mix_frames(self, f1, f2):
+        if self.mode == "zigzag":
+            return self.mix_zigzag(f1, f2)
         if self.mode == "checker":
             return self.mix_checkerboard(f1, f2)
         return self.mix_columns(f1, f2)
@@ -86,4 +88,16 @@ class MixingThread(QThread):
         mask = ((yy + xx) % 2) == 0
         result = f1.copy()
         result[mask] = f2[mask]
+        return result
+
+    def mix_zigzag(self, f1, f2):
+        h, w = f1.shape[:2]
+        yy = np.arange(h)[:, None]
+        xx = np.arange(w)[None, :]
+        mask = ((yy + xx) % 2) == 0
+
+        result = f1.copy()
+        result[~mask, 0] = f2[~mask, 0]
+        result[mask, 1] = f2[mask, 1]
+        result[~mask, 2] = f2[~mask, 2]
         return result
